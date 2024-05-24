@@ -47,6 +47,51 @@ class FaissLSH(Faiss):
         self.index.train(X)
         self.index.add(X)
 
+class FaissIndexFlatIP(Faiss):
+    def __init__(self, metric, hold):
+        self._metric = metric
+
+    def fit(self, X):
+        if self._metric == "angular":
+            X = sklearn.preprocessing.normalize(X, axis=1, norm="l2")
+
+        if X.dtype != numpy.float32:
+            X = X.astype(numpy.float32)
+
+        # self.quantizer = faiss.IndexFlatIP(X.shape[1])
+        index = faiss.IndexFlatIP(X.shape[1])
+        index.train(X)
+        index.add(X)
+        self.index = index
+    
+    def set_query_arguments(self, hold):
+        return
+
+    def __str__(self):
+        return "FaissIndexFlatIP"
+    
+class FaissIndexFlatL2(Faiss):
+    def __init__(self, metric, hold):
+        self._metric = metric
+
+    def fit(self, X):
+        if self._metric == "angular":
+            X = sklearn.preprocessing.normalize(X, axis=1, norm="l2")
+
+        if X.dtype != numpy.float32:
+            X = X.astype(numpy.float32)
+
+        # self.quantizer = faiss.IndexFlatIP(X.shape[1])
+        index = faiss.IndexFlatL2(X.shape[1])
+        index.train(X)
+        index.add(X)
+        self.index = index
+    
+    def set_query_arguments(self, hold):
+        return
+
+    def __str__(self):
+        return "FaissIndexFlatL2"
 
 class FaissIVF(Faiss):
     def __init__(self, metric, n_list):
@@ -61,7 +106,7 @@ class FaissIVF(Faiss):
             X = X.astype(numpy.float32)
 
         self.quantizer = faiss.IndexFlatL2(X.shape[1])
-        index = faiss.IndexIVFFlat(self.quantizer, X.shape[1], self._n_list, faiss.METRIC_L2)
+        index = faiss.IndexIVFFlat(self.quantizer, X.shape[1], self._n_list, faiss.METRIC_INNER_PRODUCT)
         index.train(X)
         index.add(X)
         self.index = index
