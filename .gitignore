@@ -18,4 +18,10 @@ venv
 
 .idea
 xps-prc-ds-faiss-opt
+faiss-1.8.0
+faiss*
 website
+res*.csv
+res.csv
+emon_data/*
+emon_data

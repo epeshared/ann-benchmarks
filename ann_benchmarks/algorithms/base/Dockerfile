@@ -10,3 +10,5 @@ COPY requirements.txt run_algorithm.py ./
 RUN pip3 install -r requirements.txt
 
 ENTRYPOINT ["python3", "-u", "run_algorithm.py"]
+# ENTRYPOINT ["sh", "-c", "DNNL_VERBOSE=1 DNNL_ENABLE=1 python3 -u run_algorithm.py"]
+

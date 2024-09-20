@@ -5,10 +5,10 @@ RUN apt update && apt install -y wget
 # RUN bash Anaconda3-2020.11-Linux-x86_64.sh -b
 # ENV PATH /root/anaconda3/bin:$PATH
 
-RUN wget https://repo.anaconda.com/miniconda/Miniconda3-py310_23.5.2-0-Linux-x86_64.sh
-RUN chmod a+x Miniconda3-py310_23.5.2-0-Linux-x86_64.sh
-RUN bash ./Miniconda3-py310_23.5.2-0-Linux-x86_64.sh -b
-ENV PATH /root/miniconda3/bin:$PATH
+RUN wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+RUN chmod a+x Miniforge3-Linux-x86_64.sh
+RUN bash ./Miniforge3-Linux-x86_64.sh -b
+ENV PATH /root/miniforge3/bin:$PATH
 
 RUN conda config --set proxy_servers.https proxy-dmz.intel.com:912
 RUN conda config --set proxy_servers.http proxy-dmz.intel.com:912
@@ -48,29 +48,30 @@ RUN cmake ..
 RUN make -j
 RUN make install
 
-WORKDIR /home/app
-ADD xps-prc-ds-faiss-opt ./faiss
-RUN rm -rf /home/app/faiss/build
 
-ADD run_conda.sh /home/app/faiss/
-ADD run_conda_env.sh /home/app/faiss/
-ADD build_faiss.sh /home/app/faiss/
-RUN chmod a+x /home/app/faiss/run_conda.sh
-RUN chmod a+x /home/app/faiss/run_conda_env.sh
-RUN chmod a+x /home/app/faiss/build_faiss.sh
-
-WORKDIR /home/app/faiss/
-# RUN ./run_conda.sh
-RUN ./run_conda_env.sh
-RUN ./build_faiss.sh
-
-RUN python3 -c 'import faiss; print(faiss.IndexFlatIP)'
-WORKDIR /home/app
 ENV http_proxy child-prc.intel.com:913
 ENV https_proxy child-prc.intel.com:913
 RUN pip3 install psutil 
 RUN pip3 install pyyaml
 RUN pip3 install scikit-learn scipy matplotlib
+# RUN pip3 install tensorflow
+
+WORKDIR /home/app
+ADD faiss-1.8.0 ./faiss
+RUN rm -rf /home/app/faiss/build
+
+ADD run_conda_env.sh /home/app/faiss/
+ADD build_faiss.sh /home/app/faiss/
+RUN chmod a+x /home/app/faiss/run_conda_env.sh
+RUN chmod a+x /home/app/faiss/build_faiss.sh
 
 
+WORKDIR /home/app/faiss/
+# RUN ./run_conda.sh
+RUN ./run_conda_env.sh
+RUN ./build_faiss.sh
+RUN cat /sys/kernel/mm/transparent_hugepage/enabled
+RUN python3 -c 'import faiss; print(faiss.IndexFlatIP)'
+
+WORKDIR /home/app/
 

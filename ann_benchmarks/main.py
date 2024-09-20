@@ -69,9 +69,18 @@ def run_worker(cpu: int, args: argparse.Namespace, queue: multiprocessing.Queue)
         if args.local:
             run(definition, args.dataset, args.count, args.runs, args.batch)
         else:
-            memory_margin = 500e6  # reserve some extra memory for misc stuff
-            mem_limit = int((psutil.virtual_memory().available - memory_margin) / args.parallelism)
-            cpu_limit = str(cpu) if not args.batch else f"0-{multiprocessing.cpu_count() - 1}"
+            if args.mem_limit > 0:
+                mem_limit = int(args.mem_limit * 1e9)  # 将 GB 转换为字节
+            else:
+                memory_margin = 500e6  # 预留 500 MB 的内存
+                mem_limit = int((psutil.virtual_memory().available - memory_margin) / args.parallelism)
+
+            if args.cpu_range is not None:
+                cpu_limit = f"{args.cpu_range}"
+            else:
+                cpu_limit = str(multiprocessing.cpu_count())
+
+            print(f"run docker with memeory {mem_limit}, cpu {cpu_limit}")
             
             run_docker(definition, args.dataset, args.count, args.runs, args.timeout, args.batch, cpu_limit, mem_limit)
 
@@ -123,6 +132,8 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--run-disabled", help="run algorithms that are disabled in algos.yml", action="store_true")
     parser.add_argument("--parallelism", type=positive_int, help="Number of Docker containers in parallel", default=1)
+    parser.add_argument("--cpu-range", type=str, help="CPU cores to run Docker containers, such as 0-7, 64-51", default=None)
+    parser.add_argument("--mem-limit", type=positive_int, help="memory to run each Docker containers, unit is GB", default=-1)
 
     args = parser.parse_args()
     if args.timeout == -1:

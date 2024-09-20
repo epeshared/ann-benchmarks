@@ -5,7 +5,7 @@ import faiss
 import numpy
 import os
 import sklearn.preprocessing
-import tensorflow as tf
+# import tensorflow as tf
 
 from ..base.module import BaseANN
 
@@ -58,29 +58,29 @@ class FaissIndexFlatIP_AMX(Faiss):
     def __str__(self):
         return "FaissIndexFlatIP_AMX"
     
-class FaissIndexFlatIP_BF16_AMX(Faiss):
-    def __init__(self, metric, hold):
-        print("### __init__ arg hold: " + str(hold))
-        self._metric = metric
+# class FaissIndexFlatIP_BF16_AMX(Faiss):
+#     def __init__(self, metric, hold):
+#         print("### __init__ arg hold: " + str(hold))
+#         self._metric = metric
 
-    def fit(self, X):
-        if self._metric == "angular":
-            X = sklearn.preprocessing.normalize(X, axis=1, norm="l2")
+#     def fit(self, X):
+#         if self._metric == "angular":
+#             X = sklearn.preprocessing.normalize(X, axis=1, norm="l2")
 
-        if X.dtype != numpy.float32:
-            X = X.astype(numpy.float32)
+#         if X.dtype != numpy.float32:
+#             X = X.astype(numpy.float32)
 
-        X = tf.cast(X, tf.bfloat16)
+#         X = tf.cast(X, tf.bfloat16)
         
-        # self.quantizer = faiss.IndexFlatIP(X.shape[1])
-        index = faiss.IndexFlatIP_bf16(X.shape[1])
-        index.train(X)
-        index.add(X)
-        self.index = index
+#         # self.quantizer = faiss.IndexFlatIP(X.shape[1])
+#         index = faiss.IndexFlatIP_bf16(X.shape[1])
+#         index.train(X)
+#         index.add(X)
+#         self.index = index
     
-    def set_query_arguments(self, hold):
-        print("### set_query_arguments arg hold: " + str(hold))
-        return
+#     def set_query_arguments(self, hold):
+#         print("### set_query_arguments arg hold: " + str(hold))
+#         return
 
-    def __str__(self):
-        return "FaissIndexFlatIP_BF16_AMX"
+#     def __str__(self):
+#         return "FaissIndexFlatIP_BF16_AMX"
