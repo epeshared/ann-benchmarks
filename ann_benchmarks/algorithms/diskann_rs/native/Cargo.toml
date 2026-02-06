@@ -1,0 +1,20 @@
+[package]
+name = "diskann_rs_native"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "diskann_rs_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+numpy = "0.22"
+pyo3 = { version = "0.22", features = ["extension-module"] }
+thiserror = "2"
+ndarray = "0.16"
+
+# DiskANN Rust implementation (vendored under ../third_party/DiskANN-rs).
+# The algorithm Dockerfile will clone it if missing.
+diskann = { path = "../third_party/DiskANN-rs/diskann" }
+diskann-providers = { path = "../third_party/DiskANN-rs/diskann-providers" }
+diskann-vector = { path = "../third_party/DiskANN-rs/diskann-vector" }

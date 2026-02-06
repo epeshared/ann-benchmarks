@@ -1,0 +1,43 @@
+float:
+  angular:
+    - base_args: ['@metric']
+      constructor: DiskANNRS
+      disabled: false
+      docker_tag: ann-benchmarks-diskann_rs
+      module: ann_benchmarks.algorithms.diskann_rs
+      name: diskann-rs
+      run_groups:
+        diskann_rs_125_64_1-2:
+          args: [{alpha: 1.2, l_build: 125, max_outdegree: 64}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]]
+    - base_args: ['@metric']
+      constructor: DiskANNRS
+      disabled: false
+      docker_tag: ann-benchmarks-diskann_rs
+      module: ann_benchmarks.algorithms.diskann_rs
+      name: diskann-rs-smoke
+      run_groups:
+        diskann_rs_smoke:
+          args: [{alpha: 1.2, l_build: 50, max_outdegree: 32}]
+          query_args: [[20]]
+  euclidean:
+    - base_args: ['@metric']
+      constructor: DiskANNRS
+      disabled: false
+      docker_tag: ann-benchmarks-diskann_rs
+      module: ann_benchmarks.algorithms.diskann_rs
+      name: diskann-rs
+      run_groups:
+        diskann_rs_125_64_1-2:
+          args: [{alpha: 1.2, l_build: 125, max_outdegree: 64}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]]
+    - base_args: ['@metric']
+      constructor: DiskANNRS
+      disabled: false
+      docker_tag: ann-benchmarks-diskann_rs
+      module: ann_benchmarks.algorithms.diskann_rs
+      name: diskann-rs-smoke
+      run_groups:
+        diskann_rs_smoke:
+          args: [{alpha: 1.2, l_build: 50, max_outdegree: 32}]
+          query_args: [[20]]

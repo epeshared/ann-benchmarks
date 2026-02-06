@@ -1,0 +1,11 @@
+# Local vendoring of DiskANN sources for offline builds.
+third_party/
+
+# Native extension build outputs.
+/native/target/
+/native/*.so
+/native/*.pyd
+/native/*.dll
+/native/*.dylib
+/native/*.whl
+/native/.maturin/

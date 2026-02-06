@@ -1,0 +1,17 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "diskann_rs_native"
+version = "0.1.0"
+description = "Native Python bindings for DiskANN (Rust) for ANN-Benchmarks"
+requires-python = ">=3.10"
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[tool.maturin]
+module-name = "diskann_rs_native"
+bindings = "pyo3"
