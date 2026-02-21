@@ -209,6 +209,7 @@ dependencies = [
  "diskann-utils",
  "diskann-vector",
  "diskann-wide",
+ "flatbuffers",
  "half",
  "rand",
  "rayon",
@@ -251,11 +252,17 @@ version = "0.1.0"
 dependencies = [
  "diskann",
  "diskann-providers",
+ "diskann-quantization",
+ "diskann-utils",
  "diskann-vector",
  "ndarray",
  "numpy",
  "pyo3",
+ "rand",
+ "rayon",
+ "serde_json",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -398,6 +405,16 @@ dependencies = [
  "cfg-if",
  "libc",
  "libredox",
+]
+
+[[package]]
+name = "flatbuffers"
+version = "25.12.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "35f6839d7b3b98adde531effaf34f0c2badc6f4735d26fe74709d8e513a96ef3"
+dependencies = [
+ "bitflags 2.10.0",
+ "rustc_version",
 ]
 
 [[package]]
@@ -1153,6 +1170,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
+name = "rustc_version"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
+dependencies = [
+ "semver",
+]
+
+[[package]]
 name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1166,6 +1192,12 @@ checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
 ]
+
+[[package]]
+name = "semver"
+version = "1.0.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d767eb0aabc880b29956c35734170f26ed551a859dbd361d140cdbeca61ab1e2"
 
 [[package]]
 name = "seq-macro"

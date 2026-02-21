@@ -1,6 +1,9 @@
 from multiprocessing.pool import ThreadPool
 from typing import Any, Dict, Optional
-import psutil
+try:
+    import psutil  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    psutil = None
 
 import numpy
 
@@ -19,6 +22,8 @@ class BaseANN(object):
                 this information is not available.
         """
 
+        if psutil is None:
+            return None
         return psutil.Process().memory_info().rss / 1024
 
     def fit(self, X: numpy.array) -> None:
