@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import uuid
 
 from ..base.module import BaseANN
 
@@ -156,11 +157,31 @@ class DiskANNRS_PQ(BaseANN):
         self.translate_to_center = bool(translate_to_center)
         self.rng_seed = int(param.get("rng_seed", 0))
 
+        disk_index = param.get("disk_index", False)
+        if isinstance(disk_index, str):
+            v = disk_index.strip().lower()
+            if v in {"1", "true", "t", "yes", "y"}:
+                disk_index = True
+            elif v in {"0", "false", "f", "no", "n"}:
+                disk_index = False
+            else:
+                disk_index = bool(disk_index)
+        self.disk_index = bool(disk_index)
+
+        self.disk_build_memory_gb = float(param.get("disk_build_memory_gb", 16.0))
+        disk_search_pq_chunks = param.get("disk_search_pq_chunks")
+        self.disk_search_pq_chunks = int(disk_search_pq_chunks) if disk_search_pq_chunks is not None else None
+        self.disk_search_io_limit = int(param.get("disk_search_io_limit", 1_000_000))
+        disk_build_quantization = param.get("disk_build_quantization")
+        self.disk_build_quantization = str(disk_build_quantization) if disk_build_quantization is not None else None
+        self.disk_block_size = int(param.get("disk_block_size", 4096))
+
         self.index_prefix = param.get("index_prefix")
         self.index_action = param.get("index_action", "build")
 
+        mode = "disk" if self.disk_index else "mem"
         self.name = (
-            f"diskann-rs-pq({self.metric})-L{self.l_build}-R{self.max_outdegree}-a{self.alpha}"
+            f"diskann-rs-pq-{mode}({self.metric})-L{self.l_build}-R{self.max_outdegree}-a{self.alpha}"
             f"-chunks{self.num_pq_chunks}-cent{self.num_centers}"
         )
 
@@ -168,10 +189,18 @@ class DiskANNRS_PQ(BaseANN):
         self._l_search = None
 
     def fit(self, X):
-        from diskann_rs_native import PQIndex
+        if self.disk_index:
+            from diskann_rs_native import PQDiskIndex
+        else:
+            from diskann_rs_native import PQIndex
 
         action = str(self.index_action)
         prefix = self.index_prefix
+
+        if self.disk_index and not prefix:
+            # Disk index build always produces on-disk artifacts.
+            prefix = f"/tmp/annb_diskann_rs_pq_disk_{os.getpid()}_{uuid.uuid4().hex}"
+            self.index_prefix = prefix
 
         if action not in {"build", "load", "build_and_save", "auto"}:
             raise ValueError(
@@ -181,9 +210,9 @@ class DiskANNRS_PQ(BaseANN):
         if action in {"load", "auto"}:
             if not prefix:
                 raise ValueError("index_prefix is required when index_action is load/auto")
-            meta_path = f"{prefix}.pq.meta.json"
+            meta_path = f"{prefix}.pq.disk.meta.json" if self.disk_index else f"{prefix}.pq.meta.json"
             if action == "load" or os.path.exists(meta_path):
-                self._index = PQIndex.load(prefix)
+                self._index = PQDiskIndex.load(prefix) if self.disk_index else PQIndex.load(prefix)
             else:
                 action = "build_and_save"
 
@@ -192,22 +221,40 @@ class DiskANNRS_PQ(BaseANN):
             if X.ndim != 2:
                 raise ValueError(f"expected 2D array, got shape={X.shape}")
 
-            self._index = PQIndex(
-                metric=self.metric,
-                l_build=self.l_build,
-                max_outdegree=self.max_outdegree,
-                alpha=self.alpha,
-                num_pq_chunks=self.num_pq_chunks,
-                num_centers=self.num_centers,
-                max_k_means_reps=self.max_k_means_reps,
-                translate_to_center=self.translate_to_center,
-                rng_seed=self.rng_seed,
-            )
-            self._index.fit(X)
-            if action == "build_and_save":
+            if self.disk_index:
                 if not prefix:
-                    raise ValueError("index_prefix is required when index_action is build_and_save")
-                self._index.save(prefix)
+                    raise ValueError("index_prefix is required for disk_index builds")
+                self._index = PQDiskIndex(
+                    metric=self.metric,
+                    l_build=self.l_build,
+                    max_outdegree=self.max_outdegree,
+                    alpha=self.alpha,
+                    num_pq_chunks=self.num_pq_chunks,
+                    build_memory_gb=self.disk_build_memory_gb,
+                    search_pq_chunks=self.disk_search_pq_chunks,
+                    search_io_limit=self.disk_search_io_limit,
+                    build_quantization=self.disk_build_quantization,
+                    block_size=self.disk_block_size,
+                )
+                # Disk build writes artifacts to `prefix`.
+                self._index.fit(X, prefix)
+            else:
+                self._index = PQIndex(
+                    metric=self.metric,
+                    l_build=self.l_build,
+                    max_outdegree=self.max_outdegree,
+                    alpha=self.alpha,
+                    num_pq_chunks=self.num_pq_chunks,
+                    num_centers=self.num_centers,
+                    max_k_means_reps=self.max_k_means_reps,
+                    translate_to_center=self.translate_to_center,
+                    rng_seed=self.rng_seed,
+                )
+                self._index.fit(X)
+                if action == "build_and_save":
+                    if not prefix:
+                        raise ValueError("index_prefix is required when index_action is build_and_save")
+                    self._index.save(prefix)
 
         if self._l_search is not None:
             self._index.set_l_search(self._l_search)

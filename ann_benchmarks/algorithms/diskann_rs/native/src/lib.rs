@@ -324,6 +324,7 @@ use diskann::{
 };
 use diskann_providers::{
     model::IndexConfiguration,
+    model::graph::traits::AdHoc,
     model::graph::provider::async_::{
         common::{FullPrecision, Hybrid, NoDeletes, NoStore, Quantized},
         inmem::{
@@ -332,11 +333,27 @@ use diskann_providers::{
         },
     },
     model::{pq::{self, FixedChunkPQTable, GeneratePivotArguments, NUM_PQ_CENTROIDS, NUM_KMEANS_REPS_PQ}},
-    storage::{load_fp_index, load_pq_index, AsyncIndexMetadata, FileStorageProvider, SaveWith},
+    storage::{
+        get_disk_index_compressed_pq_file, get_disk_index_file, get_disk_index_pq_pivot_file,
+        load_fp_index, load_pq_index, AsyncIndexMetadata, FileStorageProvider, SaveWith,
+    },
 };
 use diskann_vector::distance::Metric;
 use diskann_quantization::scalar::train::ScalarQuantizationParameters;
 use diskann_utils::views::MatrixView;
+use diskann_providers::storage::StorageWriteProvider;
+
+use diskann_disk::{
+    disk_index_build_parameter::{MemoryBudget, NumPQChunks},
+    DiskIndexBuildParameters, QuantizationType,
+};
+use diskann_disk::build::builder::build::DiskIndexBuilder;
+use diskann_disk::data_model::CachingStrategy;
+use diskann_disk::search::provider::disk_provider::DiskIndexSearcher;
+use diskann_disk::search::provider::disk_vertex_provider_factory::DiskVertexProviderFactory;
+use diskann_disk::storage::DiskIndexWriter;
+use diskann_disk::storage::disk_index_reader::DiskIndexReader;
+use diskann_disk::utils::aligned_file_reader::AlignedFileReaderFactory;
 
 type IndexType = DiskANNIndex<
     diskann_providers::model::graph::provider::async_::inmem::FullPrecisionProvider<
@@ -382,6 +399,10 @@ fn pq_meta_path(prefix: &str) -> PathBuf {
 
 fn spherical_meta_path(prefix: &str) -> PathBuf {
     PathBuf::from(format!("{prefix}.spherical.meta.json"))
+}
+
+fn pq_disk_meta_path(prefix: &str) -> PathBuf {
+    PathBuf::from(format!("{prefix}.pq.disk.meta.json"))
 }
 
 fn ensure_parent_dir(prefix: &str) -> Result<(), PyDiskAnnError> {
@@ -561,6 +582,507 @@ fn read_kind_meta(
         as u32;
 
     Ok((kind, metric, l_build, max_outdegree, alpha, dim, n_points, max_degree, v))
+}
+
+fn write_pq_disk_meta(
+    prefix: &str,
+    metric: Metric,
+    l_build: usize,
+    max_outdegree: usize,
+    alpha: f32,
+    dim: usize,
+    n_points: usize,
+    max_degree: u32,
+    num_pq_chunks: usize,
+    build_memory_gb: f64,
+    search_pq_chunks: usize,
+    search_io_limit: usize,
+    build_quantization: QuantizationType,
+) -> Result<(), PyDiskAnnError> {
+    write_kind_meta(
+        pq_disk_meta_path(prefix),
+        prefix,
+        "pq_disk",
+        metric,
+        l_build,
+        max_outdegree,
+        alpha,
+        dim,
+        n_points,
+        max_degree,
+        serde_json::json!({
+            "num_pq_chunks": num_pq_chunks,
+            "build_memory_gb": build_memory_gb,
+            "search_pq_chunks": search_pq_chunks,
+            "search_io_limit": search_io_limit,
+            "build_quantization": build_quantization.to_string(),
+        }),
+    )
+}
+
+fn read_pq_disk_meta(
+    prefix: &str,
+) -> Result<(Metric, usize, usize, f32, usize, usize, u32, usize, f64, usize, usize, QuantizationType), PyDiskAnnError>
+{
+    let (_kind, metric, l_build, max_outdegree, alpha, dim, n_points, max_degree, extra) =
+        read_kind_meta(pq_disk_meta_path(prefix))?;
+
+    let num_pq_chunks = extra
+        .get("num_pq_chunks")
+        .and_then(|x| x.as_u64())
+        .ok_or_else(|| PyDiskAnnError::InvalidParameter("meta.num_pq_chunks missing".into()))?
+        as usize;
+    let build_memory_gb = extra
+        .get("build_memory_gb")
+        .and_then(|x| x.as_f64())
+        .ok_or_else(|| PyDiskAnnError::InvalidParameter("meta.build_memory_gb missing".into()))?;
+    let search_pq_chunks = extra
+        .get("search_pq_chunks")
+        .and_then(|x| x.as_u64())
+        .ok_or_else(|| PyDiskAnnError::InvalidParameter("meta.search_pq_chunks missing".into()))?
+        as usize;
+    let search_io_limit = extra
+        .get("search_io_limit")
+        .and_then(|x| x.as_u64())
+        .ok_or_else(|| PyDiskAnnError::InvalidParameter("meta.search_io_limit missing".into()))?
+        as usize;
+    let build_quantization_str = extra
+        .get("build_quantization")
+        .and_then(|x| x.as_str())
+        .ok_or_else(|| PyDiskAnnError::InvalidParameter("meta.build_quantization missing".into()))?;
+    let build_quantization = QuantizationType::from_str(build_quantization_str).map_err(|e| {
+        PyDiskAnnError::InvalidParameter(format!("invalid meta.build_quantization: {e}"))
+    })?;
+
+    Ok((
+        metric,
+        l_build,
+        max_outdegree,
+        alpha,
+        dim,
+        n_points,
+        max_degree,
+        num_pq_chunks,
+        build_memory_gb,
+        search_pq_chunks,
+        search_io_limit,
+        build_quantization,
+    ))
+}
+
+type DiskData = AdHoc<f32, u32>;
+
+#[pyclass]
+struct PQDiskIndex {
+    metric: Metric,
+    l_build: usize,
+    max_outdegree: usize,
+    alpha: f32,
+    num_pq_chunks: usize,
+
+    build_memory_gb: f64,
+    search_pq_chunks: usize,
+    search_io_limit: usize,
+    build_quantization: QuantizationType,
+    block_size: usize,
+
+    l_search: usize,
+    dim: Option<usize>,
+    n_points: Option<usize>,
+    searcher: Option<Arc<DiskIndexSearcher<DiskData, DiskVertexProviderFactory<DiskData, AlignedFileReaderFactory>>>>,
+}
+
+#[pymethods]
+impl PQDiskIndex {
+    #[new]
+    #[pyo3(signature = (
+        metric,
+        l_build,
+        max_outdegree,
+        alpha,
+        num_pq_chunks,
+        build_memory_gb=16.0,
+        search_pq_chunks=None,
+        search_io_limit=1_000_000,
+        build_quantization=None,
+        block_size=4096,
+    ))]
+    fn new(
+        metric: String,
+        l_build: usize,
+        max_outdegree: usize,
+        alpha: f32,
+        num_pq_chunks: usize,
+        build_memory_gb: f64,
+        search_pq_chunks: Option<usize>,
+        search_io_limit: usize,
+        build_quantization: Option<String>,
+        block_size: usize,
+    ) -> Result<Self, PyDiskAnnError> {
+        let metric = Metric::from_str(&metric)
+            .map_err(|_| PyDiskAnnError::InvalidMetric(metric.clone()))?;
+
+        if l_build == 0 {
+            return Err(PyDiskAnnError::InvalidParameter("l_build must be > 0".into()));
+        }
+        if max_outdegree == 0 {
+            return Err(PyDiskAnnError::InvalidParameter(
+                "max_outdegree must be > 0".into(),
+            ));
+        }
+        if !alpha.is_finite() || alpha <= 0.0 {
+            return Err(PyDiskAnnError::InvalidParameter(
+                "alpha must be finite and > 0".into(),
+            ));
+        }
+        if !build_memory_gb.is_finite() || build_memory_gb <= 0.0 {
+            return Err(PyDiskAnnError::InvalidParameter(
+                "build_memory_gb must be finite and > 0".into(),
+            ));
+        }
+        if num_pq_chunks == 0 {
+            return Err(PyDiskAnnError::InvalidParameter(
+                "num_pq_chunks must be > 0".into(),
+            ));
+        }
+        if search_io_limit == 0 {
+            return Err(PyDiskAnnError::InvalidParameter(
+                "search_io_limit must be > 0".into(),
+            ));
+        }
+
+        let search_pq_chunks = search_pq_chunks.unwrap_or(num_pq_chunks);
+        if search_pq_chunks == 0 {
+            return Err(PyDiskAnnError::InvalidParameter(
+                "search_pq_chunks must be > 0".into(),
+            ));
+        }
+
+        let build_quantization = match build_quantization {
+            Some(s) => QuantizationType::from_str(&s)
+                .map_err(|e| PyDiskAnnError::InvalidParameter(format!("invalid build_quantization: {e}")))?,
+            None => QuantizationType::PQ { num_chunks: num_pq_chunks },
+        };
+
+        Ok(Self {
+            metric,
+            l_build,
+            max_outdegree,
+            alpha,
+            num_pq_chunks,
+            build_memory_gb,
+            search_pq_chunks,
+            search_io_limit,
+            build_quantization,
+            block_size,
+            l_search: 10,
+            dim: None,
+            n_points: None,
+            searcher: None,
+        })
+    }
+
+    #[staticmethod]
+    fn load(prefix: String) -> Result<Self, PyDiskAnnError> {
+        let (
+            metric,
+            l_build,
+            max_outdegree,
+            alpha,
+            dim,
+            n_points,
+            _max_degree,
+            num_pq_chunks,
+            build_memory_gb,
+            search_pq_chunks,
+            search_io_limit,
+            build_quantization,
+        ) = read_pq_disk_meta(&prefix)?;
+
+        let mut this = Self::new(
+            metric.to_string(),
+            l_build,
+            max_outdegree,
+            alpha,
+            num_pq_chunks,
+            build_memory_gb,
+            Some(search_pq_chunks),
+            search_io_limit,
+            Some(build_quantization.to_string()),
+            4096,
+        )?;
+
+        this.dim = Some(dim);
+        this.n_points = Some(n_points);
+        this.searcher = Some(Arc::new(Self::create_searcher(&prefix, metric, search_io_limit)?));
+        Ok(this)
+    }
+
+    fn set_l_search(&mut self, l_search: usize) {
+        self.l_search = l_search;
+    }
+
+    fn fit<'py>(
+        &mut self,
+        _py: Python<'py>,
+        x: PyReadonlyArray2<'py, f32>,
+        prefix: String,
+    ) -> Result<(), PyDiskAnnError> {
+        let x = x.as_array();
+        let n_points = x.shape()[0];
+        let dim = x.shape()[1];
+        if n_points == 0 || dim == 0 {
+            return Err(PyDiskAnnError::InvalidParameter("X must be non-empty".into()));
+        }
+        if n_points > (u32::MAX as usize) {
+            return Err(PyDiskAnnError::InvalidParameter(
+                "X has too many rows for u32 ids".into(),
+            ));
+        }
+
+        ensure_parent_dir(&prefix)?;
+
+        // Write dataset to a DiskANN-compatible .bin file (u32 npts, u32 dim, then row-major f32 data).
+        let dataset_path = format!("{prefix}.disk.dataset.bin");
+        {
+            let mut w = FileStorageProvider
+                .create_for_write(&dataset_path)
+                .map_err(|e| PyDiskAnnError::InvalidParameter(format!("create dataset file failed: {e}")))?;
+            w.write_all(&(n_points as u32).to_le_bytes())
+                .map_err(|e| PyDiskAnnError::InvalidParameter(format!("write dataset header failed: {e}")))?;
+            w.write_all(&(dim as u32).to_le_bytes())
+                .map_err(|e| PyDiskAnnError::InvalidParameter(format!("write dataset header failed: {e}")))?;
+
+            let flat: Vec<f32> = x.iter().copied().collect();
+            w.write_all(bytemuck::cast_slice(&flat))
+                .map_err(|e| PyDiskAnnError::InvalidParameter(format!("write dataset body failed: {e}")))?;
+            w.flush()
+                .map_err(|e| PyDiskAnnError::InvalidParameter(format!("flush dataset failed: {e}")))?;
+        }
+
+        let prune_kind = graph_config::PruneKind::from_metric(self.metric);
+        let config = graph_config::Builder::new_with(
+            self.max_outdegree,
+            graph_config::MaxDegree::default_slack(),
+            self.l_build,
+            prune_kind,
+            |b| {
+                b.alpha(self.alpha);
+            },
+        )
+        .build()
+        .map_err(ANNError::from)
+        .map_err(PyDiskAnnError::Ann)?;
+
+        let num_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
+
+        let index_config = IndexConfiguration::new(
+            self.metric,
+            dim,
+            n_points,
+            diskann::utils::ONE,
+            num_threads,
+            config,
+        );
+
+        let mem_budget = MemoryBudget::try_from_gb(self.build_memory_gb)
+            .map_err(ANNError::from)
+            .map_err(PyDiskAnnError::Ann)?;
+        let pq_chunks = NumPQChunks::new_with(self.search_pq_chunks, dim)
+            .map_err(ANNError::from)
+            .map_err(PyDiskAnnError::Ann)?;
+
+        let disk_build_param = DiskIndexBuildParameters::new(mem_budget, self.build_quantization, pq_chunks);
+
+        let index_writer = DiskIndexWriter::new(
+            dataset_path,
+            prefix.clone(),
+            None,
+            self.block_size,
+        )
+        .map_err(PyDiskAnnError::Ann)?;
+
+        let mut builder = DiskIndexBuilder::<DiskData, _>::new(
+            &FileStorageProvider,
+            disk_build_param,
+            index_config,
+            index_writer,
+        )
+        .map_err(PyDiskAnnError::Ann)?;
+
+        builder.build().map_err(PyDiskAnnError::Ann)?;
+
+        // Use the disk index file header's max-degree for metadata.
+        let max_degree = self.max_outdegree as u32;
+        write_pq_disk_meta(
+            &prefix,
+            self.metric,
+            self.l_build,
+            self.max_outdegree,
+            self.alpha,
+            dim,
+            n_points,
+            max_degree,
+            self.num_pq_chunks,
+            self.build_memory_gb,
+            self.search_pq_chunks,
+            self.search_io_limit,
+            self.build_quantization,
+        )?;
+
+        self.dim = Some(dim);
+        self.n_points = Some(n_points);
+        self.searcher = Some(Arc::new(Self::create_searcher(&prefix, self.metric, self.search_io_limit)?));
+        Ok(())
+    }
+
+    fn search<'py>(
+        &self,
+        py: Python<'py>,
+        q: PyReadonlyArray1<'py, f32>,
+        k: usize,
+        l_search: usize,
+    ) -> Result<Bound<'py, PyArray1<u32>>, PyDiskAnnError> {
+        let Some(dim) = self.dim else {
+            return Err(PyDiskAnnError::InvalidParameter(
+                "fit() must be called before search()".into(),
+            ));
+        };
+        let searcher = self.searcher.as_ref().ok_or_else(|| {
+            PyDiskAnnError::InvalidParameter("fit() must be called before search()".into())
+        })?;
+
+        if k == 0 {
+            return Err(PyDiskAnnError::InvalidParameter("k must be > 0".into()));
+        }
+        if l_search < k {
+            return Err(PyDiskAnnError::InvalidParameter("l_search must be >= k".into()));
+        }
+
+        let q = q.as_array();
+        if q.len() != dim {
+            return Err(PyDiskAnnError::InvalidParameter(format!(
+                "query dim mismatch: expected {dim}, got {}",
+                q.len()
+            )));
+        }
+
+        let query: Vec<f32> = q.iter().copied().collect();
+        let ids = py.allow_threads(|| -> Result<Vec<u32>, PyDiskAnnError> {
+            let res = searcher
+                .search(&query, k as u32, l_search as u32, None, None, false)
+                .map_err(PyDiskAnnError::Ann)?;
+            Ok(res.results.into_iter().map(|r| r.vertex_id).collect())
+        })?;
+
+        Ok(ids.into_pyarray_bound(py))
+    }
+
+    fn batch_search<'py>(
+        &self,
+        py: Python<'py>,
+        xq: PyReadonlyArray2<'py, f32>,
+        k: usize,
+        l_search: usize,
+    ) -> Result<Bound<'py, PyArray2<u32>>, PyDiskAnnError> {
+        let Some(dim) = self.dim else {
+            return Err(PyDiskAnnError::InvalidParameter(
+                "fit() must be called before batch_search()".into(),
+            ));
+        };
+        let searcher = self.searcher.as_ref().ok_or_else(|| {
+            PyDiskAnnError::InvalidParameter("fit() must be called before batch_search()".into())
+        })?;
+
+        if k == 0 {
+            return Err(PyDiskAnnError::InvalidParameter("k must be > 0".into()));
+        }
+        if l_search < k {
+            return Err(PyDiskAnnError::InvalidParameter("l_search must be >= k".into()));
+        }
+
+        let xq = xq.as_array();
+        let n_queries = xq.shape()[0];
+        if xq.shape()[1] != dim {
+            return Err(PyDiskAnnError::InvalidParameter(format!(
+                "query dim mismatch: expected {dim}, got {}",
+                xq.shape()[1]
+            )));
+        }
+
+        let queries: Vec<f32> = xq.iter().copied().collect();
+        let searcher = searcher.clone();
+        let results = py.allow_threads(move || -> Result<Vec<u32>, PyDiskAnnError> {
+            let mut all = vec![0u32; n_queries * k];
+            all.par_chunks_mut(k)
+                .enumerate()
+                .try_for_each(|(qi, out_slice)| {
+                    let start = qi * dim;
+                    let end = start + dim;
+                    let query: &[f32] = &queries[start..end];
+                    let res = searcher
+                        .search(query, k as u32, l_search as u32, None, None, false)
+                        .map_err(PyDiskAnnError::Ann)?;
+                    for (dst, item) in out_slice.iter_mut().zip(res.results.iter()) {
+                        *dst = item.vertex_id;
+                    }
+                    Ok::<(), PyDiskAnnError>(())
+                })?;
+            Ok(all)
+        })?;
+
+        let array = ndarray::Array2::from_shape_vec((n_queries, k), results)
+            .map_err(|e| PyDiskAnnError::InvalidParameter(e.to_string()))?;
+        Ok(array.into_pyarray_bound(py))
+    }
+}
+
+impl PQDiskIndex {
+    fn create_searcher(
+        prefix: &str,
+        metric: Metric,
+        search_io_limit: usize,
+    ) -> Result<DiskIndexSearcher<DiskData, DiskVertexProviderFactory<DiskData, AlignedFileReaderFactory>>, PyDiskAnnError>
+    {
+        let disk_index_file = get_disk_index_file(prefix);
+        let pq_pivot_file = get_disk_index_pq_pivot_file(prefix);
+        let pq_compressed_file = get_disk_index_compressed_pq_file(prefix);
+
+        let disk_index_reader = DiskIndexReader::<f32>::new::<FileStorageProvider>(
+            pq_pivot_file,
+            pq_compressed_file,
+            &FileStorageProvider,
+        )
+        .map_err(PyDiskAnnError::Ann)?;
+
+        let reader_factory = AlignedFileReaderFactory::new(disk_index_file);
+        let vertex_provider_factory = DiskVertexProviderFactory::<DiskData, _>::new(
+            reader_factory,
+            CachingStrategy::None,
+        )
+        .map_err(PyDiskAnnError::Ann)?;
+
+        let num_threads = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(1);
+
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| PyDiskAnnError::InvalidParameter(format!("failed to create tokio runtime: {e}")))?;
+
+        DiskIndexSearcher::<DiskData, _>::new(
+            num_threads,
+            search_io_limit,
+            &disk_index_reader,
+            vertex_provider_factory,
+            metric,
+            Some(rt),
+        )
+        .map_err(PyDiskAnnError::Ann)
+    }
 }
 
 fn env_num_threads() -> Option<usize> {
@@ -2375,6 +2897,7 @@ impl SphericalIndex {
 fn diskann_rs_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Index>()?;
     m.add_class::<PQIndex>()?;
+    m.add_class::<PQDiskIndex>()?;
     m.add_class::<SphericalIndex>()?;
     Ok(())
 }

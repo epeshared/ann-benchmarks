@@ -5,7 +5,7 @@ float:
       disabled: false
       docker_tag: ann-benchmarks-diskann_rs
       module: ann_benchmarks.algorithms.diskann_rs
-      name: diskann-rs
+      name: diskann-rs-memory
       run_groups:
         diskann_rs_125_32_1:
           args: [{alpha: 1, l_build: 125, max_outdegree: 32}]
@@ -30,45 +30,8 @@ float:
       disabled: false
       docker_tag: ann-benchmarks-diskann_rs
       module: ann_benchmarks.algorithms.diskann_rs
-      name: diskann-rs-pq
+      name: diskann-rs-pq-memory
       run_groups:
-        # diskann_rs_pq_125_32_1-2_14:
-        #   args: [{alpha: 1.2, num_pq_chunks: 14, l_build: 125, max_outdegree: 32}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_32_1-2_28:
-        #   args: [{alpha: 1.2, num_pq_chunks: 28, l_build: 125, max_outdegree: 32}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_32_1-2_42:
-        #   args: [{alpha: 1.2, num_pq_chunks: 42, l_build: 125, max_outdegree: 32}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_32_1_14:
-        #   args: [{alpha: 1, num_pq_chunks: 14, l_build: 125, max_outdegree: 32}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_32_1_28:
-        #   args: [{alpha: 1, num_pq_chunks: 28, l_build: 125, max_outdegree: 32}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_32_1_42:
-        #   args: [{alpha: 1, num_pq_chunks: 42, l_build: 125, max_outdegree: 32}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_64_1-2_14:
-        #   args: [{alpha: 1.2, num_pq_chunks: 14, l_build: 125, max_outdegree: 64}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_64_1-2_28:
-        #   args: [{alpha: 1.2, num_pq_chunks: 28, l_build: 125, max_outdegree: 64}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_64_1-2_42:
-        #   args: [{alpha: 1.2, num_pq_chunks: 42, l_build: 125, max_outdegree: 64}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_64_1_14:
-        #   args: [{alpha: 1, num_pq_chunks: 14, l_build: 125, max_outdegree: 64}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_64_1_28:
-        #   args: [{alpha: 1, num_pq_chunks: 28, l_build: 125, max_outdegree: 64}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_pq_125_64_1_42:
-        #   args: [{alpha: 1, num_pq_chunks: 42, l_build: 125, max_outdegree: 64}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-
         # Sweep groups for dbpedia-openai-1000k-angular (PQ chunks 96/128/192 × L 200/300/500).
         pq_100_32_1-2_chunks96_L200:
           args: [{alpha: 1.2, num_pq_chunks: 96, l_build: 100, max_outdegree: 32}]
@@ -97,50 +60,49 @@ float:
         pq_100_32_1-2_chunks192_L500:
           args: [{alpha: 1.2, num_pq_chunks: 192, l_build: 100, max_outdegree: 32}]
           query_args: [[500]]
+
+    - base_args: ['@metric']
+      constructor: DiskANNRS_PQ
+      disabled: false
+      docker_tag: ann-benchmarks-diskann_rs
+      module: ann_benchmarks.algorithms.diskann_rs
+      name: diskann-rs-pq-disk
+      run_groups:
+        # Disk index (PQ) groups aligned 1:1 with `diskann-rs-pq`.
+        pq_100_32_1-2_chunks96_L200:
+          args: [{alpha: 1.2, num_pq_chunks: 96, l_build: 100, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 96, disk_search_io_limit: 1000000, disk_build_quantization: PQ_96, disk_block_size: 4096}]
+          query_args: [[200]]
+        pq_100_32_1-2_chunks96_L300:
+          args: [{alpha: 1.2, num_pq_chunks: 96, l_build: 100, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 96, disk_search_io_limit: 1000000, disk_build_quantization: PQ_96, disk_block_size: 4096}]
+          query_args: [[300]]
+        pq_100_32_1-2_chunks96_L500:
+          args: [{alpha: 1.2, num_pq_chunks: 96, l_build: 100, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 96, disk_search_io_limit: 1000000, disk_build_quantization: PQ_96, disk_block_size: 4096}]
+          query_args: [[500]]
+        pq_100_32_1-2_chunks128_L200:
+          args: [{alpha: 1.2, num_pq_chunks: 128, l_build: 100, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 128, disk_search_io_limit: 1000000, disk_build_quantization: PQ_128, disk_block_size: 4096}]
+          query_args: [[200]]
+        pq_100_32_1-2_chunks128_L300:
+          args: [{alpha: 1.2, num_pq_chunks: 128, l_build: 100, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 128, disk_search_io_limit: 1000000, disk_build_quantization: PQ_128, disk_block_size: 4096}]
+          query_args: [[300]]
+        pq_100_32_1-2_chunks128_L500:
+          args: [{alpha: 1.2, num_pq_chunks: 128, l_build: 100, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 128, disk_search_io_limit: 1000000, disk_build_quantization: PQ_128, disk_block_size: 4096}]
+          query_args: [[500]]
+        pq_100_32_1-2_chunks192_L200:
+          args: [{alpha: 1.2, num_pq_chunks: 192, l_build: 100, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 192, disk_search_io_limit: 1000000, disk_build_quantization: PQ_192, disk_block_size: 4096}]
+          query_args: [[200]]
+        pq_100_32_1-2_chunks192_L300:
+          args: [{alpha: 1.2, num_pq_chunks: 192, l_build: 100, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 192, disk_search_io_limit: 1000000, disk_build_quantization: PQ_192, disk_block_size: 4096}]
+          query_args: [[300]]
+        pq_100_32_1-2_chunks192_L500:
+          args: [{alpha: 1.2, num_pq_chunks: 192, l_build: 100, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 192, disk_search_io_limit: 1000000, disk_build_quantization: PQ_192, disk_block_size: 4096}]
+          query_args: [[500]]
     - base_args: ['@metric']
       constructor: DiskANNRS_Spherical
       disabled: false
       docker_tag: ann-benchmarks-diskann_rs
       module: ann_benchmarks.algorithms.diskann_rs
-      name: diskann-rs-spherical
+      name: diskann-rs-spherical-memory
       run_groups:
-        # diskann_rs_spherical_125_32_1_2b:
-        #   args: [{alpha: 1, l_build: 125, max_outdegree: 32, nbits: 2}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_32_1_4b:
-        #   args: [{alpha: 1, l_build: 125, max_outdegree: 32, nbits: 4}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_32_1-1_2b:
-        #   args: [{alpha: 1.1, l_build: 125, max_outdegree: 32, nbits: 2}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_32_1-1_4b:
-        #   args: [{alpha: 1.1, l_build: 125, max_outdegree: 32, nbits: 4}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_32_1-2_2b:
-        #   args: [{alpha: 1.2, l_build: 125, max_outdegree: 32, nbits: 2}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_32_1-2_4b:
-        #   args: [{alpha: 1.2, l_build: 125, max_outdegree: 32, nbits: 4}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_64_1_2b:
-        #   args: [{alpha: 1, l_build: 125, max_outdegree: 64, nbits: 2}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_64_1_4b:
-        #   args: [{alpha: 1, l_build: 125, max_outdegree: 64, nbits: 4}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_64_1-1_2b:
-        #   args: [{alpha: 1.1, l_build: 125, max_outdegree: 64, nbits: 2}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_64_1-1_4b:
-        #   args: [{alpha: 1.1, l_build: 125, max_outdegree: 64, nbits: 4}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_64_1-2_2b:
-        #   args: [{alpha: 1.2, l_build: 125, max_outdegree: 64, nbits: 2}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-        # diskann_rs_spherical_125_64_1-2_4b:
-        #   args: [{alpha: 1.2, l_build: 125, max_outdegree: 64, nbits: 4}]
-        #   query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
-
         # Sweep groups for dbpedia-openai-1000k-angular (spherical 2b/4b × L 200/300/500).
         spherical_100_32_1-2_2b_L200:
           args: [{alpha: 1.2, l_build: 100, max_outdegree: 32, nbits: 2}]
@@ -166,7 +128,7 @@ float:
       disabled: false
       docker_tag: ann-benchmarks-diskann_rs
       module: ann_benchmarks.algorithms.diskann_rs
-      name: diskann-rs
+      name: diskann-rs-memory
       run_groups:
         diskann_rs_100_64_1:
           args: [{alpha: 1, l_build: 100, max_outdegree: 64}]
@@ -191,7 +153,7 @@ float:
       disabled: false
       docker_tag: ann-benchmarks-diskann_rs
       module: ann_benchmarks.algorithms.diskann_rs
-      name: diskann-rs-pq
+      name: diskann-rs-pq-memory
       run_groups:
         diskann_rs_pq_100_64_1-2_32:
           args: [{alpha: 1.2, num_pq_chunks: 32, l_build: 100, max_outdegree: 64}]
@@ -229,12 +191,57 @@ float:
         diskann_rs_pq_80_64_1_96:
           args: [{alpha: 1, num_pq_chunks: 96, l_build: 80, max_outdegree: 64}]
           query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+
+    - base_args: ['@metric']
+      constructor: DiskANNRS_PQ
+      disabled: false
+      docker_tag: ann-benchmarks-diskann_rs
+      module: ann_benchmarks.algorithms.diskann_rs
+      name: diskann-rs-pq-disk
+      run_groups:
+        # Disk index (PQ) groups aligned 1:1 with `diskann-rs-pq`.
+        diskann_rs_pq_100_64_1-2_32:
+          args: [{alpha: 1.2, num_pq_chunks: 32, l_build: 100, max_outdegree: 64, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 32, disk_search_io_limit: 1000000, disk_build_quantization: PQ_32, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_100_64_1_32:
+          args: [{alpha: 1, num_pq_chunks: 32, l_build: 100, max_outdegree: 64, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 32, disk_search_io_limit: 1000000, disk_build_quantization: PQ_32, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_125_32_1-2_112:
+          args: [{alpha: 1.2, num_pq_chunks: 112, l_build: 125, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 112, disk_search_io_limit: 1000000, disk_build_quantization: PQ_112, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_125_32_1-2_32:
+          args: [{alpha: 1.2, num_pq_chunks: 32, l_build: 125, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 32, disk_search_io_limit: 1000000, disk_build_quantization: PQ_32, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_125_32_1-2_96:
+          args: [{alpha: 1.2, num_pq_chunks: 96, l_build: 125, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 96, disk_search_io_limit: 1000000, disk_build_quantization: PQ_96, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_125_32_1_112:
+          args: [{alpha: 1, num_pq_chunks: 112, l_build: 125, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 112, disk_search_io_limit: 1000000, disk_build_quantization: PQ_112, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_125_32_1_32:
+          args: [{alpha: 1, num_pq_chunks: 32, l_build: 125, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 32, disk_search_io_limit: 1000000, disk_build_quantization: PQ_32, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_125_32_1_96:
+          args: [{alpha: 1, num_pq_chunks: 96, l_build: 125, max_outdegree: 32, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 96, disk_search_io_limit: 1000000, disk_build_quantization: PQ_96, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_80_64_1-2_112:
+          args: [{alpha: 1.2, num_pq_chunks: 112, l_build: 80, max_outdegree: 64, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 112, disk_search_io_limit: 1000000, disk_build_quantization: PQ_112, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_80_64_1-2_96:
+          args: [{alpha: 1.2, num_pq_chunks: 96, l_build: 80, max_outdegree: 64, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 96, disk_search_io_limit: 1000000, disk_build_quantization: PQ_96, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_80_64_1_112:
+          args: [{alpha: 1, num_pq_chunks: 112, l_build: 80, max_outdegree: 64, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 112, disk_search_io_limit: 1000000, disk_build_quantization: PQ_112, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
+        diskann_rs_pq_80_64_1_96:
+          args: [{alpha: 1, num_pq_chunks: 96, l_build: 80, max_outdegree: 64, disk_index: true, index_action: build, disk_build_memory_gb: 16.0, disk_search_pq_chunks: 96, disk_search_io_limit: 1000000, disk_build_quantization: PQ_96, disk_block_size: 4096}]
+          query_args: [[10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]]
     - base_args: ['@metric']
       constructor: DiskANNRS_Spherical
       disabled: false
       docker_tag: ann-benchmarks-diskann_rs
       module: ann_benchmarks.algorithms.diskann_rs
-      name: diskann-rs-spherical
+      name: diskann-rs-spherical-memory
       run_groups:
         diskann_rs_spherical_100_64_1_2b:
           args: [{alpha: 1, l_build: 100, max_outdegree: 64, nbits: 2}]
