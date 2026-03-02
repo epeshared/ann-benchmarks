@@ -9,3 +9,4 @@ third_party/
 /native/*.dylib
 /native/*.whl
 /native/.maturin/
+/native/vendor/

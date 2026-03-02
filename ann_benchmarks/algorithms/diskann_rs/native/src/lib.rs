@@ -334,7 +334,7 @@ use diskann_providers::{
     },
     model::{pq::{self, FixedChunkPQTable, GeneratePivotArguments, NUM_PQ_CENTROIDS, NUM_KMEANS_REPS_PQ}},
     storage::{
-        get_disk_index_compressed_pq_file, get_disk_index_file, get_disk_index_pq_pivot_file,
+        get_compressed_pq_file, get_disk_index_file, get_pq_pivot_file,
         load_fp_index, load_pq_index, AsyncIndexMetadata, FileStorageProvider, SaveWith,
     },
 };
@@ -1047,8 +1047,8 @@ impl PQDiskIndex {
     ) -> Result<DiskIndexSearcher<DiskData, DiskVertexProviderFactory<DiskData, AlignedFileReaderFactory>>, PyDiskAnnError>
     {
         let disk_index_file = get_disk_index_file(prefix);
-        let pq_pivot_file = get_disk_index_pq_pivot_file(prefix);
-        let pq_compressed_file = get_disk_index_compressed_pq_file(prefix);
+        let pq_pivot_file = get_pq_pivot_file(prefix);
+        let pq_compressed_file = get_compressed_pq_file(prefix);
 
         let disk_index_reader = DiskIndexReader::<f32>::new::<FileStorageProvider>(
             pq_pivot_file,
